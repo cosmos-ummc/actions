@@ -1,9 +1,15 @@
-name: 'Build and publish to Docker'
-description: 'Builds and pushes artifacts to Docker'
+name: 'Build and publish to Docker Hub'
+description: 'Builds and pushes artifacts to Docker Hub'
 
 inputs:
   image_name:
     description: 'Name of the image'
+    required: true
+  dockerhub_username:
+    description: 'Username for Docker Hub'
+    required: true
+  dockerhub_password:
+    description: 'Password/Token for Docker Hub'
     required: true
 
 runs:
@@ -24,8 +30,8 @@ runs:
     - name: Login to DockerHub
       uses: docker/login-action@v1
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+        username: ${{ inputs.dockerhub_username }}
+        password: ${{ inputs.dockerhub_password }}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v2
