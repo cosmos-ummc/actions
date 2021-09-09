@@ -1,0 +1,45 @@
+name: 'Build and publish to Docker'
+description: 'Builds and pushes artifacts to Docker'
+
+inputs:
+  image_name:
+    description: 'Name of the image'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set env vars
+      shell: bash
+      run: |
+        export "BRANCH=${GITHUB_REF:11}"
+        echo "BRANCH=${BRANCH//\//-}" >> $GITHUB_ENV
+        echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+      with:
+        install: true
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: |
+          cosmosummc/${{ inputs.image_name }}:${{ env.SHORT_SHA }}
+          cosmosummc/${{ inputs.image_name }}:${{ env.BRANCH }}
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-${{ github.sha }},mode=max
+
+    - name: Update cache
+      shell: bash
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-${{ github.sha }} /tmp/.buildx-cache
