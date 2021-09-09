@@ -1,0 +1,87 @@
+name: 'Deploy service'
+description: 'Connect to remote Docker host and deploy the service container'
+
+inputs:
+  IMAGE_NAME:
+    description: 'Name of the image'
+    required: true
+  CONTAINER_NAME:
+    description: 'Name of the Docker container'
+    required: true
+  APP_HOST:
+    description: 'Host of the app'
+    required: true
+  DOCKERHUB_USERNAME:
+    description: 'Username for Docker Hub'
+    required: true
+  DOCKERHUB_PASSWORD:
+    description: 'Password/Token for Docker Hub'
+    required: true
+  ENV_FILE:
+    description: 'Relative path to the encrypted .env file'
+    required: true
+  KEYS_TXT:
+    description: 'keys.txt file for SOPS'
+    required: true
+  SSH_HOST:
+    description: 'The remote Docker host'
+    required: true
+  SSH_PORT:
+    description: 'SSH port used to connect to the Docker host'
+    required: true
+  SSH_USER:
+    description: 'SSH user used to connect to the Docker host'
+    required: true
+  SSH_KEY:
+    description: 'SSH key used to connect to the Docker host'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: mdgreenwald/mozilla-sops-action@v1
+
+    - name: Set up sops
+      shell: bash
+      env:
+        KEYS_TXT: ${{ inputs.KEYS_TXT }}
+      run: |
+        mkdir -p $XDG_CONFIG_HOME/sops/age
+        echo "$KEYS_TXT" >> $XDG_CONFIG_HOME/sops/age/keys.txt
+        sops -d ${{ inputs.ENV_FILE }} > .env
+
+    - name: Set up Docker host
+      uses: pcjun97/action-setup-docker-host-ssh@v1
+      with:
+        host: ${{ inputs.SSH_HOST }}
+        port: ${{ inputs.SSH_PORT }}
+        user: ${{ inputs.SSH_USER }}
+        key: ${{ inputs.SSH_KEY }}
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ inputs.DOCKERHUB_USERNAME }}
+        password: ${{ inputs.DOCKERHUB_PASSWORD }}
+
+    - name: Deploy image
+      shell: bash
+      run: |
+        docker pull cosmosummc/${{ inputs.IMAGE_NAME }}:${GITHUB_SHA::7}
+        docker container stop ${{ inputs.CONTAINER_NAME }} || true
+        docker container rm ${{ inputs.CONTAINER_NAME }} || true
+        docker container run -d \
+          --name ${{ inputs.CONTAINER_NAME }} \
+          --restart=unless-stopped \
+          --log-driver fluentd \
+          --env-file .env \
+          -l "traefik.docker.network=bridge" \
+          -l "traefik.http.routers.${{ inputs.CONTAINER_NAME }}.rule=Host(\`${{ inputs.APP_HOST }}\`)" \
+          -l "traefik.http.services.${{ inputs.CONTAINER_NAME }}.loadbalancer.server.port=${{ inputs.GRPC_PORT }}" \
+          -l "traefik.http.services.${{ inputs.CONTAINER_NAME }}.loadbalancer.server.scheme=h2c" \
+          -e "LETSENCRYPT_HOST=${{ inputs.APP_HOST }}" \
+          -e "VIRTUAL_HOST=${{ inputs.APP_HOST }}" \
+          -e "VIRTUAL_PORT=${{ inputs.HTTP_PORT }}" \
+          cosmosummc/${{ inputs.IMAGE_NAME }}:${GITHUB_SHA::7}
+        docker network connect --alias ${{ input.CONTAINER_NAME }} internal ${{ inputs.CONTAINER_NAME }}
+        docker system prune -a -f
