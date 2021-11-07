@@ -1,0 +1,32 @@
+name: 'OpenConnect'
+description: 'Install and connect to VPN using OpenConnect'
+
+inputs:
+  host:
+    description: 'VPN host'
+    required: true
+  username:
+    description: 'Login username'
+    required: true
+  password:
+    description: 'Login password'
+    required: true
+  usergroup:
+    description: 'Login usergroup'
+    required: true
+  args:
+    description: 'Additional arguments'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install openconnect
+      shell: bash
+      run: |
+        sudo apt install openconnect -y
+
+    - name: Connect to VPN
+      shell: bash
+      run: |
+        printf '${{ inputs.password }}' | sudo openconnect ${{ inputs.host }} -u ${{ inputs.username }} -g ${{ inputs.group }} --passwd-on-stdin -b ${{ inputs.args }}
